@@ -1,0 +1,1 @@
+print("Hellow from image2 app.py")
