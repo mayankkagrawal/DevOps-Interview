@@ -1,1 +1,51 @@
 # your pipeline goes here!
+
+# your pipeline goes here!
+
+stages:
+  - build
+  - push_to_dev
+  - push_to_prod
+
+# Variables to store Docker image and GCP Project information
+variables:
+  GCP_DEV_REGISTRY: gcr.io/testproject
+  GCP_PROD_REGISTRY: gcr.io/testproject-prod
+  IMAGE_TAG: $CI_COMMIT_SHA
+  GCP_SERVICE_KEY: $GCP_SERVICE_KEY
+  SUBDIRS: ""
+
+# Detect subdirectories that have been modified
+before_script:
+  - export SUBDIRS=$(git diff --name-only HEAD~1 HEAD | grep -o '^[^/]*' | uniq)
+
+# Build Docker images from modified subdirectories
+build:
+  stage: build
+  script:
+    - for dir in $SUBDIRS; do if [[ -f "$dir/Dockerfile" ]]; then docker build -t $GCP_DEV_REGISTRY/$dir:$IMAGE_TAG $dir; fi; done
+  tags:
+    - KodeKloud-runner
+
+# Push Docker images to the dev environment
+push_to_dev:
+  stage: push_to_dev
+  script:
+    - echo $GCP_SERVICE_KEY | docker login -u _json_key --password-stdin https://gcr.io
+    - for dir in $SUBDIRS; do if [[ -f "$dir/Dockerfile" ]]; then docker push $GCP_DEV_REGISTRY/$dir:$IMAGE_TAG; fi; done
+  tags:
+    - KodeKloud-runner
+
+# Push Docker images to the production registry (restricted to specific user)
+push_to_prod:
+  stage: push_to_prod
+  script:
+    - echo $GCP_SERVICE_KEY | docker login -u _json_key --password-stdin https://gcr.io
+    - for dir in $SUBDIRS; do if [[ -f "$dir/Dockerfile" ]]; then docker tag $GCP_DEV_REGISTRY/$dir:$IMAGE_TAG $GCP_PROD_REGISTRY/$dir:$IMAGE_TAG; docker push $GCP_PROD_REGISTRY/$dir:$IMAGE_TAG; fi; done
+  tags:
+    - KodeKloud-runner
+  when: manual
+  only:
+    - master
+  rules:
+    - if: '$CI_COMMIT_AUTHOR == "your-gitlab-username"'
